@@ -1,58 +1,48 @@
 
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Register Device</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, sans-serif; background:#111; color:#eee; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
-    .card { background:#1c1c1c; padding:24px; border-radius:12px; width:360px; box-shadow:0 10px 30px rgba(0,0,0,.3); }
-    label { display:block; margin:12px 0 6px; }
-    input { width:100%; padding:10px; border-radius:8px; border:1px solid #333; background:#0f0f0f; color:#eee; }
-    button { margin-top:16px; width:100%; padding:12px; border:none; border-radius:8px; background:#6a5acd; color:#fff; font-weight:600; cursor:pointer; }
-    .msg { margin-top:12px; font-size:14px; }
-    .err { color:#ff6b6b; } .ok { color:#7CFC00; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>Register Device</h2>
-    <form id="deviceForm">
-      <label>Username</label>
-      <input id="username" required />
-      <label>Emp ID</label>
-      <input id="empId" required />
-      <button type="submit">Save</button>
-      <div id="msg" class="msg" aria-live="polite"></div>
-    </form>
-  </div>
+<script>
+  const form = document.getElementById('deviceForm');
+  const msg  = document.getElementById('msg');
 
-  <script>
-    const form = document.getElementById('deviceForm');
-    const msg = document.getElementById('msg');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const empId    = document.getElementById('empId').value.trim();
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const empId = document.getElementById('empId').value.trim();
-
-      const res = await fetch('/devices', {
+    try {
+      const res  = await fetch('/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, empId })
       });
-      const data = await res.json();
 
-      if (res.ok && data.ok) {
+      // Try to parse JSON but don’t crash if empty
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+
+      if (res.status === 201 && (data.ok === true || !data.ok)) {
+        // Save user info locally
         localStorage.setItem('login_user_name', username);
         localStorage.setItem('login_emp_id', empId);
-        window.location.href = '/menu';
-      } else {
-        msg.textContent = data.error || 'Failed to save';
-        msg.className = 'msg err';
+
+        // ✅ Redirect to Menu
+        window.location.assign('/menu'); // use route handler
+        return;
       }
-    });
-  </script>
-</body>
-</html>
+
+      // Handle known errors
+      if (res.status === 409) {
+        msg.textContent = (data && data.error) || 'Already exists';
+        msg.className = 'msg err';
+        return;
+      }
+
+      msg.textContent = (data && data.error) || `Failed (${res.status})`;
+      msg.className = 'msg err';
+    } catch (err) {
+      console.error('Save error:', err);
+      msg.textContent = 'Network or server error';
+      msg.className = 'msg err';
+    }
+  });
+</script>
+``
