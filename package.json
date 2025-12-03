@@ -1,13 +1,16 @@
 
 {
-  "name": "mqtt-ws-broker",
+  "name": "railway-mqtt-app",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "aedes": "^0.51.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
   }
 }
-
+``
