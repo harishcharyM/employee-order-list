@@ -1,0 +1,198 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Food Menu</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f0f0f;
+      --card: #1c1c1c;
+      --text: #eee;
+      --accent: #6a5acd;
+      --muted: #aaa;
+      --error: #ff6b6b;
+      --ok: #7CFC00;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin:0; }
+    header { padding: 16px 24px; background:#141414; border-bottom:1px solid #222; display:flex; align-items:center; justify-content:space-between; }
+    .container { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .item { background: var(--card); border:1px solid #2a2a2a; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:8px; }
+    .item h4 { margin:0; }
+    .item .meta { color: var(--muted); font-size: 13px; }
+    .actions { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+    .btn { background: var(--accent); color:#fff; border:none; border-radius:10px; padding:12px 18px; font-weight:600; cursor:pointer; }
+    .btn:disabled { opacity:.7; cursor:not-allowed; }
+    .footer { margin-top:24px; display:flex; justify-content:flex-end; gap:12px; }
+    .msg { margin-top:12px; font-size:14px; }
+    .err { color: var(--error); }
+    .ok { color: var(--ok); }
+
+    /* Center overlay for order summary */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none; /* toggled to flex */
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.6);
+      z-index: 50;
+    }
+    .overlay .panel {
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 20px 24px;
+      max-width: 520px;
+      width: 92%;
+      color: var(--text);
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    .panel h3 { margin: 0 0 8px 0; }
+    .panel ul { text-align: left; margin: 12px 0; padding-left: 20px; }
+    .panel .total { margin-top: 6px; font-weight: 700; }
+    .panel .countdown { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Food Menu</strong>
+    <span style="color:#aaa">Select items and click Order</span>
+  </header>
+
+  <div class="container">
+    <div id="msg" class="msg" aria-live="polite"></div>
+
+    <div id="menuGrid" class="grid" aria-label="Food items">
+      <!-- Items will be rendered here -->
+    </div>
+
+    <div class="footer">
+      <button id="orderBtn" class="btn">Order</button>
+    </div>
+  </div>
+
+  <!-- Center overlay for 10-second display -->
+  <div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+    <div class="panel">
+      <h3 id="summaryTitle">Your Order</h3>
+      <div id="summaryText">Preparing…</div>
+      <ul id="summaryList"></ul>
+      <div id="summaryTotal" class="total"></div>
+      <div id="summaryCountdown" class="countdown"></div>
+    </div>
+  </div>
+
+  <script>
+    // Sample menu data (you can move this to a backend later)
+    const MENU = [
+      { id: 'biryani', name: 'Hyderabadi Biryani', price: 220, desc: 'Fragrant basmati rice with spices' },
+      { id: 'dosa', name: 'Masala Dosa', price: 120, desc: 'Crispy dosa with spiced potato' },
+      { id: 'paneer', name: 'Paneer Butter Masala', price: 180, desc: 'Paneer in rich buttery gravy' },
+      { id: 'chicken', name: 'Chicken Curry', price: 200, desc: 'Classic curry with tender chicken' },
+      { id: 'idli', name: 'Idli (2 pcs)', price: 60, desc: 'Steamed rice cakes with chutney' },
+      { id: 'vada', name: 'Medu Vada (2 pcs)', price: 70, desc: 'Crispy lentil doughnuts' },
+      { id: 'dal', name: 'Dal Tadka', price: 140, desc: 'Tempered lentils, homestyle' },
+      { id: 'roti', name: 'Butter Roti (2 pcs)', price: 50, desc: 'Soft rotis with butter' },
+      { id: 'salad', name: 'Green Salad', price: 80, desc: 'Fresh seasonal salad' },
+      { id: 'drink', name: 'Soft Drink', price: 40, desc: '200ml chilled beverage' },
+    ];
+
+    const grid = document.getElementById('menuGrid');
+    const msg = document.getElementById('msg');
+    const orderBtn = document.getElementById('orderBtn');
+    const overlay = document.getElementById('overlay');
+    const summaryText = document.getElementById('summaryText');
+    const summaryList = document.getElementById('summaryList');
+    const summaryTotal = document.getElementById('summaryTotal');
+    const summaryCountdown = document.getElementById('summaryCountdown');
+
+    // Render menu items with checkboxes
+    function renderMenu() {
+      const frag = document.createDocumentFragment();
+      MENU.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'item';
+        card.innerHTML = `
+          <h4>${item.name}</h4>
+          <div class="meta">₹${item.price} • ${item.desc}</div>
+          <div class="actions">
+            <label>
+              <input type="checkbox" class="pick" data-id="${item.id}" data-name="${item.name}" data-price="${item.price}">
+              Add
+            </label>
+            <span>₹${item.price}</span>
+          </div>
+        `;
+        frag.appendChild(card);
+      });
+      grid.appendChild(frag);
+    }
+
+    function getSelections() {
+      const nodes = grid.querySelectorAll('input.pick:checked');
+      const items = [];
+      nodes.forEach(n => {
+        items.push({
+          id: n.dataset.id,
+          name: n.dataset.name,
+          price: Number(n.dataset.price)
+        });
+      });
+      return items;
+    }
+
+    function showOverlay(items) {
+      // Build summary
+      summaryText.textContent = 'You selected:';
+      summaryList.innerHTML = '';
+      let total = 0;
+      items.forEach(it => {
+        total += it.price;
+        const li = document.createElement('li');
+        li.textContent = `${it.name} — ₹${it.price}`;
+        summaryList.appendChild(li);
+      });
+      summaryTotal.textContent = `Total: ₹${total}`;
+
+      // Show overlay
+      overlay.style.display = 'flex';
+
+      // 10-second countdown
+      let seconds = 10;
+      summaryCountdown.textContent = `This summary will close in ${seconds}s…`;
+      const timer = setInterval(() => {
+        seconds -= 1;
+        summaryCountdown.textContent = `This summary will close in ${seconds}s…`;
+        if (seconds <= 0) {
+          clearInterval(timer);
+          overlay.style.display = 'none';
+        }
+      }, 1000);
+    }
+
+    orderBtn.addEventListener('click', () => {
+      msg.textContent = '';
+      const selected = getSelections();
+      if (selected.length === 0) {
+        msg.textContent = 'Please select at least one item.';
+        msg.className = 'msg err';
+        return;
+      }
+      msg.textContent = `Ordering ${selected.length} item(s)…`;
+      msg.className = 'msg ok';
+
+      // Display selection in the middle for 10 seconds
+      showOverlay(selected);
+
+      // Optional: clear selections after showing overlay
+      grid.querySelectorAll('input.pick:checked').forEach(n => n.checked = false);
+    });
+
+    renderMenu();
+  </script>
+</body>
+</
