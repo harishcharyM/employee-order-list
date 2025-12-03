@@ -12,65 +12,35 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-/* ---------- Config ---------- */
+// ---- Config ----
 const HOST = process.env.HOST || 'employee-order-list-production.up.railway.app';
-const PORT = Number(process.env.PORT) || 3000;   // Railway sets PORT
+const PORT = Number(process.env.PORT) || 3000;
 const WS_PATH = process.env.WS_PATH || '/mqtt';
 const TOPIC_COMMAND = process.env.TOPIC_COMMAND || 'devices/command';
 const TOPIC_STATUS  = process.env.TOPIC || 'devices/status';
 
-/* ---------- Express ---------- */
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Serve static files from /public (index.html, menu.html)
-app.use(express.static(path.join(__dirname, 'public')));
-
-/* Root route MUST serve index.html */
-app.get('/', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-/* Health endpoint for platform probes */
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, ws_path: WS_PATH, topics: { status: TOPIC_STATUS, command: TOPIC_COMMAND } });
-});
-
-/* If someone hits /mqtt with normal HTTP */
-app.get(WS_PATH, (_req, res) => {
-  res.status(426).send('WebSocket MQTT endpoint. Use wss and MQTT over websockets.');
-});
-
-/* ---------- In-memory data ---------- */
+// ---- In-memory store ----
 const DEVICES = [];
 const findDevice = (username, empId) =>
   DEVICES.find(d => d.emp_id === empId || d.username.toLowerCase() === (username || '').toLowerCase());
 
-/* ---------- Aedes MQTT broker over WebSocket ---------- */
-const broker = aedes();
-broker.on('clientReady', (client) => console.log('MQTT client connected:', client?.id));
-broker.on('publish', (packet) => packet?.topic && console.log('MQTT publish', packet.topic));
-broker.on('subscribe', (subs, client) => console.log('MQTT subscribe', client?.id, subs.map(s => s.topic)));
-broker.on('clientDisconnect', (client) => console.log('MQTT client disconnected:', client?.id));
-
-const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer });
-
-wss.on('connection', (ws, req) => {
-  const pathname = url.parse(req.url).pathname;
-  if (pathname !== WS_PATH) {
-    console.log('WS rejected (wrong path):', pathname);
-    ws.close();
-    return;
-  }
-  const stream = createWebSocketStream(ws, { encoding: 'binary' });
-  broker.handle(stream);
+// ---- Health & WS info (for probes) ----
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, ws_path: WS_PATH, topics: { status: TOPIC_STATUS, command: TOPIC_COMMAND } });
 });
 
-/* ---------- REST API ---------- */
-app.get('/devices', (_req, res) => res.json({ items: DEVICES }));
+// Friendly message if someone does normal GET to /mqtt
+app.get(WS_PATH, (_req, res) => {
+  res.status(426).send('WebSocket MQTT endpoint. Connect with wss and MQTT over websockets.');
+});
 
+// ---- API FIRST (before static) ----
+
+// Create device
 app.post('/devices', (req, res) => {
   const { username, empId } = req.body || {};
   if (!username || !empId) {
@@ -82,14 +52,16 @@ app.post('/devices', (req, res) => {
   }
   const item = { username, emp_id: empId, created_at: Date.now() };
   DEVICES.push(item);
+  // Return 201 + redirect hint
   return res.status(201).json({ ok: true, item, redirect: '/menu' });
 });
 
-/* Menu route MUST serve menu.html */
-app.get('/menu', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'menu.html'));
+// List devices (optional)
+app.get('/devices', (_req, res) => {
+  res.json({ items: DEVICES });
 });
 
+// Orders → publish via MQTT
 app.post('/orders', (req, res) => {
   const { name, emp_id, order_list } = req.body || {};
   if (!name || !emp_id || !Array.isArray(order_list)) {
@@ -102,6 +74,7 @@ app.post('/orders', (req, res) => {
   });
 });
 
+// Commands → publish via MQTT
 app.post('/command', (req, res) => {
   const payload = JSON.stringify({ ...(req.body || {}), ts: Date.now() });
   broker.publish({ topic: TOPIC_COMMAND, payload, qos: 1, retain: false }, (err) => {
@@ -110,10 +83,51 @@ app.post('/command', (req, res) => {
   });
 });
 
-/* ---------- Start ---------- */
+// ---- Static pages AFTER API ----
+const publicDir = path.join(__dirname, 'public');
+app.use(express.static(publicDir));
+
+// Root → index.html
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(publicDir, 'index.html'));
+});
+
+// Menu → menu.html
+app.get('/menu', (_req, res) => {
+  res.sendFile(path.join(publicDir, 'menu.html'));
+});
+
+// Optional: 405 for methods not supported on /devices
+app.all('/devices', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).send('Method Not Allowed');
+  }
+  return next();
+});
+
+// ---- MQTT broker over WebSocket ----
+const broker = aedes();
+broker.on('clientReady', (c) => console.log('MQTT connected:', c?.id));
+broker.on('publish', (p) => p?.topic && console.log('MQTT publish', p.topic));
+broker.on('subscribe', (subs, c) => console.log('MQTT subscribe', c?.id, subs.map(s => s.topic)));
+broker.on('clientDisconnect', (c) => console.log('MQTT disconnected:', c?.id));
+
+const httpServer = createServer(app);
+const wss = new WebSocketServer({ server: httpServer });
+wss.on('connection', (ws, req) => {
+  const pathname = url.parse(req.url).pathname;
+  if (pathname !== WS_PATH) {
+    console.log('WS rejected (wrong path):', pathname);
+    ws.close();
+    return;
+  }
+  const stream = createWebSocketStream(ws, { encoding: 'binary' });
+  broker.handle(stream);
+});
+
 httpServer.listen(PORT, () => {
   console.log(`HTTP + WS server listening on PORT=${PORT}`);
-  console.log(`Static dir: ${path.join(__dirname, 'public')}`);
-  console.log(`Root: GET / → index.html  console.log(`Root: GET / → index.html`);
-  console.log(`Menu: GET /menu → menu.html`);
-  console.log(`WS MQTT path: ${WS_PATH} (connect wss://${HOST}${WS_PATH})`);
+  console.log(`Static dir: ${publicDir}`);
+  console.log(`Connect with: wss://${HOST}${WS_PATH}`);
+});
+``
