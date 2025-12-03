@@ -54,9 +54,8 @@
 
         const data = await res.json();
         if (res.ok && data.ok) {
-          msg.textContent = `Saved: ${data.item.username} / ${data.item.empId}`;
-          msg.className = 'msg ok';
-          form.reset();
+          // ✅ Redirect to Food Menu page
+          window.location.href = '/menu.html';
         } else {
           msg.textContent = data.error || 'Failed to save';
           msg.className = 'msg err';
@@ -71,4 +70,5 @@
     });
   </script>
 </body>
-</
+</html>
+``
