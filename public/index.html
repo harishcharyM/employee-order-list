@@ -20,7 +20,7 @@
       const empId    = document.getElementById('empId').value.trim();
       try {
         const res = await fetch('/devices', {
-          method: 'POST',
+          method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, empId })
         });
