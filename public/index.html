@@ -1,1 +1,74 @@
-#Harish
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Register Device</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111; color: #eee; display:flex; min-height:100vh; align-items:center; justify-content:center; }
+    .card { background:#1c1c1c; padding:24px; border-radius:12px; width:360px; box-shadow:0 10px 30px rgba(0,0,0,.3); }
+    label { display:block; margin:12px 0 6px; }
+    input { width:100%; padding:10px; border-radius:8px; border:1px solid #333; background:#0f0f0f; color:#eee; }
+    button { margin-top:16px; width:100%; padding:12px; border:none; border-radius:8px; background:#6a5acd; color:#fff; font-weight:600; cursor:pointer; }
+    button:disabled { background:#444; cursor:not-allowed; }
+    .msg { margin-top:12px; font-size:14px; }
+    .ok { color:#7CFC00; }
+    .err { color:#ff6b6b; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Register Device</h2>
+    <form id="deviceForm">
+      <label for="username">Username</label>
+      <input id="username" name="username" placeholder="e.g., harish" autocomplete="username" required />
+
+      <label for="empId">Emp ID</label>
+      <input id="empId" name="empId" placeholder="e.g., E1234" required />
+
+      <button id="saveBtn" type="submit">Save</button>
+      <div id="msg" class="msg" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('deviceForm');
+    const msg = document.getElementById('msg');
+    const btn = document.getElementById('saveBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      btn.disabled = true;
+
+      const username = document.getElementById('username').value.trim();
+      const empId = document.getElementById('empId').value.trim();
+
+      try {
+        const res = await fetch('/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, empId })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          msg.textContent = `Saved: ${data.item.username} / ${data.item.empId}`;
+          msg.className = 'msg ok';
+          form.reset();
+        } else {
+          msg.textContent = data.error || 'Failed to save';
+          msg.className = 'msg err';
+        }
+      } catch (err) {
+        console.error(err);
+        msg.textContent = 'Network or server error';
+        msg.className = 'msg err';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</
