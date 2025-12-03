@@ -1,48 +1,44 @@
 
-<script>
-  const form = document.getElementById('deviceForm');
-  const msg  = document.getElementById('msg');
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Register Device</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body>
+  <h2>Register Device</h2>
+  <form id="deviceForm">
+    <label>Username <input id="username" required></label>
+    <label>Emp ID <input id="empId" required></label>
+    <button type="submit">Save</button>
+    <div id="msg" style="margin-top:8px;"></div>
+  </form>
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('username').value.trim();
-    const empId    = document.getElementById('empId').value.trim();
-
-    try {
-      const res  = await fetch('/devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, empId })
-      });
-
-      // Try to parse JSON but don’t crash if empty
-      let data = {};
-      try { data = await res.json(); } catch (_) {}
-
-      if (res.status === 201 && (data.ok === true || !data.ok)) {
-        // Save user info locally
-        localStorage.setItem('login_user_name', username);
-        localStorage.setItem('login_emp_id', empId);
-
-        // ✅ Redirect to Menu
-        window.location.assign('/menu'); // use route handler
-        return;
+  <script>
+    const form = document.getElementById('deviceForm');
+    const msg  = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const empId    = document.getElementById('empId').value.trim();
+      try {
+        const res  = await fetch('/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, empId })
+        });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        if (res.status === 201) {
+          localStorage.setItem('login_user_name', username);
+          localStorage.setItem('login_emp_id', empId);
+          // ✅ navigate to menu
+          window.location.assign('/menu');
+          return;
+        }
+        msg.textContent = data.error || `Failed (${res.status})`;
+      } catch (err) {
+        console.error(err);
+        msg.textContent = 'Network error';
       }
-
-      // Handle known errors
-      if (res.status === 409) {
-        msg.textContent = (data && data.error) || 'Already exists';
-        msg.className = 'msg err';
-        return;
-      }
-
-      msg.textContent = (data && data.error) || `Failed (${res.status})`;
-      msg.className = 'msg err';
-    } catch (err) {
-      console.error('Save error:', err);
-      msg.textContent = 'Network or server error';
-      msg.className = 'msg err';
-    }
-  });
-</script>
-``
+    });
+  </script>
+</body>
+</html>
