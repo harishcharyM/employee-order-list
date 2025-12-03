@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
+// ---- Config ----
 const HOST = process.env.HOST || 'employee-order-list-production.up.railway.app';
 const PORT = Number(process.env.PORT) || 3000;
 const WS_PATH = process.env.WS_PATH || '/mqtt';
@@ -20,64 +21,34 @@ const TOPIC_STATUS  = process.env.TOPIC || 'devices/status';
 
 const app = express();
 app.use(cors());
-app.use(express.json()); // <-- body parser
+app.use(express.json());
 
-/* Health & info */
+// ---- Health & WS info ----
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ws_path: WS_PATH, topics: { status: TOPIC_STATUS, command: TOPIC_COMMAND } });
 });
+
+// Friendly message if someone does normal GET to /mqtt
 app.get(WS_PATH, (_req, res) => {
   res.status(426).send('WebSocket MQTT endpoint. Connect with wss and MQTT over websockets.');
 });
 
-/* In-memory data */
-const DEVICES = [];
-const findDevice = (username, empId) =>
-  DEVICES.find(d => d.emp_id === empId || d.username.toLowerCase() === (username || '').toLowerCase());
-
-/* ---- API ROUTES FIRST ---- */
-app.post('/devices', (req, res) => {
-  const { username, empId } = req.body || {};
-  if (!username || !empId) {
-    return res.status(400).json({ ok: false, error: 'username and empId are required' });
-  }
-  const existing = findDevice(username, empId);
-  if (existing) {
-    return res.status(409).json({ ok: false, error: 'Device already exists', existing });
-  }
-  const item = { username, emp_id: empId, created_at: Date.now() };
-  DEVICES.push(item);
-  return res.status(201).json({ ok: true, item, redirect: '/menu' });
-});
-
-app.get('/devices', (_req, res) => res.json({ items: DEVICES }));
-
-/* Orders → publish via MQTT */
-const broker = aedes();
-app.post('/orders', (req, res) => {
-  const { name, emp_id, order_list } = req.body || {};
-  if (!name || !emp_id || !Array.isArray(order_list)) {
-    return res.status(400).json({ ok: false, error: 'Invalid payload. Required: { name, emp_id, order_list[] }' });
-  }
-  const message = JSON.stringify({ name, emp_id, order_list, ts: Date.now() });
-  broker.publish({ topic: TOPIC_STATUS, payload: message, qos: 1, retain: false }, (err) => {
-    if (err) return res.status(500).json({ ok: false, error: 'MQTT publish failed' });
-    return res.json({ ok: true });
-  });
-});
-
-/* ---- STATIC AFTER API ---- */
+// ---- Static AFTER API ----
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
+// Root → index.html (Register page)
 app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
-app.get('/menu', (_req, res) => {
+
+// Home → menu.html (your food menu “home” page)
+app.get('/home', (_req, res) => {
   res.sendFile(path.join(publicDir, 'menu.html'));
 });
 
-/* ---- MQTT broker over WebSocket ---- */
+// ---- MQTT broker over WebSocket ----
+const broker = aedes();
 broker.on('clientReady', (c) => console.log('MQTT connected:', c?.id));
 broker.on('publish', (p) => p?.topic && console.log('MQTT publish', p.topic));
 broker.on('subscribe', (subs, c) => console.log('MQTT subscribe', c?.id, subs.map(s => s.topic)));
@@ -96,11 +67,31 @@ wss.on('connection', (ws, req) => {
   broker.handle(stream);
 });
 
+// ---- Orders API (kept as-is) ----
+app.post('/orders', (req, res) => {
+  const { name, emp_id, order_list } = req.body || {};
+  if (!name || !emp_id || !Array.isArray(order_list)) {
+    return res.status(400).json({ ok: false, error: 'Invalid payload. Required: { name, emp_id, order_list[] }' });
+  }
+  const message = JSON.stringify({ name, emp_id, order_list, ts: Date.now() });
+  broker.publish({ topic: TOPIC_STATUS, payload: message, qos: 1, retain: false }, (err) => {
+    if (err) return res.status(500).json({ ok: false, error: 'MQTT publish failed' });
+    return res.json({ ok: true });
+  });
+});
+
+app.post('/command', (req, res) => {
+  const payload = JSON.stringify({ ...(req.body || {}), ts: Date.now() });
+  broker.publish({ topic: TOPIC_COMMAND, payload, qos: 1, retain: false }, (err) => {
+    if (err) return res.status(500).json({ ok: false, error: 'Command publish failed' });
+    return res.json({ ok: true });
+  });
+});
+
+// ---- Start ----
 httpServer.listen(PORT, () => {
   console.log(`HTTP + WS server listening on PORT=${PORT}`);
   console.log(`Static dir: ${publicDir}`);
   console.log(`Root: GET / → index.html`);
-  console.log(`Menu: GET /menu → menu.html`);
-  console.log(`WS MQTT path: ${WS_PATH} (connect wss://${HOST}${WS_PATH})`);
-});
-``
+  console.log(`Home: GET /home → menu.html`);
+  console.log(`WS MQTT path: ${WS_PATH}  console.log(`WS MQTT path: ${WS_PATH} (connect wss://${HOST}${WS_PATH})`);
