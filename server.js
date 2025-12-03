@@ -12,7 +12,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-// ---- Config ----
 const HOST = process.env.HOST || 'employee-order-list-production.up.railway.app';
 const PORT = Number(process.env.PORT) || 3000;
 const WS_PATH = process.env.WS_PATH || '/mqtt';
@@ -21,26 +20,22 @@ const TOPIC_STATUS  = process.env.TOPIC || 'devices/status';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json()); // <-- body parser
 
-// ---- In-memory store ----
-const DEVICES = [];
-const findDevice = (username, empId) =>
-  DEVICES.find(d => d.emp_id === empId || d.username.toLowerCase() === (username || '').toLowerCase());
-
-// ---- Health & WS info (for probes) ----
+/* Health & info */
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ws_path: WS_PATH, topics: { status: TOPIC_STATUS, command: TOPIC_COMMAND } });
 });
-
-// Friendly message if someone does normal GET to /mqtt
 app.get(WS_PATH, (_req, res) => {
   res.status(426).send('WebSocket MQTT endpoint. Connect with wss and MQTT over websockets.');
 });
 
-// ---- API FIRST (before static) ----
+/* In-memory data */
+const DEVICES = [];
+const findDevice = (username, empId) =>
+  DEVICES.find(d => d.emp_id === empId || d.username.toLowerCase() === (username || '').toLowerCase());
 
-// Create device
+/* ---- API ROUTES FIRST ---- */
 app.post('/devices', (req, res) => {
   const { username, empId } = req.body || {};
   if (!username || !empId) {
@@ -52,16 +47,13 @@ app.post('/devices', (req, res) => {
   }
   const item = { username, emp_id: empId, created_at: Date.now() };
   DEVICES.push(item);
-  // Return 201 + redirect hint
   return res.status(201).json({ ok: true, item, redirect: '/menu' });
 });
 
-// List devices (optional)
-app.get('/devices', (_req, res) => {
-  res.json({ items: DEVICES });
-});
+app.get('/devices', (_req, res) => res.json({ items: DEVICES }));
 
-// Orders → publish via MQTT
+/* Orders → publish via MQTT */
+const broker = aedes();
 app.post('/orders', (req, res) => {
   const { name, emp_id, order_list } = req.body || {};
   if (!name || !emp_id || !Array.isArray(order_list)) {
@@ -74,39 +66,18 @@ app.post('/orders', (req, res) => {
   });
 });
 
-// Commands → publish via MQTT
-app.post('/command', (req, res) => {
-  const payload = JSON.stringify({ ...(req.body || {}), ts: Date.now() });
-  broker.publish({ topic: TOPIC_COMMAND, payload, qos: 1, retain: false }, (err) => {
-    if (err) return res.status(500).json({ ok: false, error: 'Command publish failed' });
-    return res.json({ ok: true });
-  });
-});
-
-// ---- Static pages AFTER API ----
+/* ---- STATIC AFTER API ---- */
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
-// Root → index.html
 app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
-
-// Menu → menu.html
 app.get('/menu', (_req, res) => {
   res.sendFile(path.join(publicDir, 'menu.html'));
 });
 
-// Optional: 405 for methods not supported on /devices
-app.all('/devices', (req, res, next) => {
-  if (req.method !== 'GET' && req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
-  return next();
-});
-
-// ---- MQTT broker over WebSocket ----
-const broker = aedes();
+/* ---- MQTT broker over WebSocket ---- */
 broker.on('clientReady', (c) => console.log('MQTT connected:', c?.id));
 broker.on('publish', (p) => p?.topic && console.log('MQTT publish', p.topic));
 broker.on('subscribe', (subs, c) => console.log('MQTT subscribe', c?.id, subs.map(s => s.topic)));
@@ -128,6 +99,8 @@ wss.on('connection', (ws, req) => {
 httpServer.listen(PORT, () => {
   console.log(`HTTP + WS server listening on PORT=${PORT}`);
   console.log(`Static dir: ${publicDir}`);
-  console.log(`Connect with: wss://${HOST}${WS_PATH}`);
+  console.log(`Root: GET / → index.html`);
+  console.log(`Menu: GET /menu → menu.html`);
+  console.log(`WS MQTT path: ${WS_PATH} (connect wss://${HOST}${WS_PATH})`);
 });
 ``
