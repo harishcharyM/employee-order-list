@@ -1,33 +1,42 @@
 
-<script>
-  const form = document.getElementById('deviceForm');
-  const msg  = document.getElementById('msg');
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Register Device</title></head>
+<body>
+  <h2>Register Device</h2>
+  <form id="deviceForm">
+    <label>Username <input id="username" required></label>
+    <label>Emp ID <input id="empId" required></label>
+    <button type="submit">Save</button>
+    <div id="msg"></div>
+  </form>
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('username').value.trim();
-    const empId    = document.getElementById('empId').value.trim();
-
-    try {
-      const res = await fetch('/devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, empId })
-      });
-
-      let data = {};
-      try { data = await res.json(); } catch {}
-
-      if (res.status === 201) {
-        localStorage.setItem('login_user_name', username);
-        localStorage.setItem('login_emp_id', empId);
-        window.location.assign('/menu');
-        return;
+  <script>
+    const form = document.getElementById('deviceForm');
+    const msg  = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const empId    = document.getElementById('empId').value.trim();
+      try {
+        const res = await fetch('/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, empId })
+        });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        if (res.status === 201) {
+          localStorage.setItem('login_user_name', username);
+          localStorage.setItem('login_emp_id', empId);
+          window.location.assign('/menu');
+          return;
+        }
+        msg.textContent = data.error || `Failed (${res.status})`;
+      } catch (err) {
+        console.error(err);
+        msg.textContent = 'Network error';
       }
-      msg.textContent = data.error || `Failed (${res.status})`;
-    } catch (err) {
-      console.error('Save error:', err);
-      msg.textContent = 'Network or server error';
-    }
-  });
-</
+    });
+  </script>
+</</body>
